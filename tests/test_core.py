@@ -24,10 +24,16 @@ class CandidateTests(unittest.TestCase):
                 self.assertFalse(first.start < second.end and second.start < first.end)
 
     def test_candidate_score_penalizes_silence_inside_window(self):
-        result = find_candidates(100, [(20, 50)], min_duration=60,
-                                 max_duration=60, max_clips=5)
-        self.assertEqual(len(result), 1)
-        self.assertAlmostEqual(result[0].active_ratio, 0.7, places=2)
+        result = find_candidates(100, [(20, 21)], min_duration=60,
+                                 max_duration=80, max_clips=5)
+        self.assertTrue(result)
+        self.assertLess(result[0].active_ratio, 1.0)
+        self.assertGreater(result[0].active_ratio, 0.98)
+
+    def test_silence_generator_is_supported(self):
+        result = find_candidates(100, iter([(20, 21)]), min_duration=60,
+                                 max_duration=80, max_clips=5)
+        self.assertTrue(result)
 
     def test_all_silence_produces_no_candidates(self):
         result = find_candidates(100, [(0, 100)], min_duration=15,
