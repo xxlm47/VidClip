@@ -23,6 +23,17 @@ class CandidateTests(unittest.TestCase):
             for second in result[index + 1:]:
                 self.assertFalse(first.start < second.end and second.start < first.end)
 
+    def test_candidate_score_penalizes_silence_inside_window(self):
+        result = find_candidates(100, [(20, 50)], min_duration=60,
+                                 max_duration=60, max_clips=5)
+        self.assertEqual(len(result), 1)
+        self.assertAlmostEqual(result[0].active_ratio, 0.7, places=2)
+
+    def test_all_silence_produces_no_candidates(self):
+        result = find_candidates(100, [(0, 100)], min_duration=15,
+                                 max_duration=120, max_clips=5)
+        self.assertEqual(result, [])
+
     def test_invalid_duration_is_rejected(self):
         with self.assertRaises(VidClipError):
             find_candidates(60, [], min_duration=10, max_duration=121)
