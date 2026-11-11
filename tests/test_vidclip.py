@@ -29,6 +29,21 @@ class VidClipBaselineTests(unittest.TestCase):
         candidates = vidclip.make_candidates([(0.0, 300.0)], 300.0, 15.0, 120.0)
         self.assertTrue(any(candidate.start > 150.0 for candidate in candidates))
 
+    def test_overlap_seconds_counts_only_active_audio(self):
+        self.assertEqual(vidclip.overlap_seconds(0, 30, [(0, 10), (20, 30)]), 20)
+
+    def test_candidate_score_rewards_active_coverage(self):
+        quiet = vidclip.make_candidates([(0, 10), (20, 30)], 30, 15, 30)
+        active = vidclip.make_candidates([(0, 30)], 30, 15, 30)
+        self.assertTrue(quiet and active)
+        self.assertGreater(max(c.score for c in active),
+                           max(c.score for c in quiet))
+
+    def test_clip_filename_keeps_mp4_extension(self):
+        name = vidclip.make_clip_filename(2, 123.4)
+        self.assertEqual(name, "clip_02_123_4s.mp4")
+        self.assertTrue(name.endswith(".mp4"))
+
     def test_silence_only_input_has_no_active_regions(self):
         self.assertEqual(vidclip.active_regions([(0.0, 20.0)], 20.0), [])
 
