@@ -95,7 +95,8 @@ python -m unittest discover -s tests -v
 - [ ] Local browser review dashboard and Android-friendly import workflow.
 - [ ] Trend Radar with dated sources, niche filters, and freshness labels.
 - [ ] User feedback loop that learns which selected clips perform well.
-- [ ] Automated tests and a small licensed/public-domain sample fixture set.
+- [x] Lightweight unit tests for candidate selection, active-audio scoring, and MP4 filename handling.
+- [ ] End-to-end tests with a small licensed/public-domain video fixture.
 
 ## Design principles
 
