@@ -68,6 +68,12 @@ python vidclip.py analyze ~/storage/shared/Download/your-video.mp4 --max-duratio
 
 Outputs are written under `output/<video-name>/` by default. Use `--output /path/to/folder` to choose another location.
 
+Run the lightweight unit tests (no video fixture or AI model required):
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## How the baseline works
 
 1. FFprobe reads duration, dimensions, and stream information.
