@@ -15,10 +15,10 @@ FFmpeg silence detection
 Active-region segmentation
     |
     v
-Candidate windows (15–120 seconds)
+Candidate windows (configurable; maximum 120 seconds)
     |
     v
-Provisional score + explanation
+Silence-threshold activity + duration-fit score\n(provisional; not semantic highlight detection)
     |
     +----> analysis.json
     |
