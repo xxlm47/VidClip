@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+from datetime import datetime, timezone
 import math
 import re
 import shutil
@@ -200,6 +201,12 @@ def choose_non_overlapping(candidates: List[Candidate], count: int,
     return sorted(chosen, key=lambda c: c.start)
 
 
+def make_clip_filename(index: int, start: float) -> str:
+    """Return a safe MP4 filename while preserving the real file extension."""
+    start_label = "{:05.1f}".format(start).replace(".", "_")
+    return "clip_{:02d}_{}s.mp4".format(index, start_label)
+
+
 def export_clip(source: Path, candidate: Candidate, target: Path,
                 aspect: str, index: int) -> None:
     start = max(0.0, candidate.start)
@@ -231,10 +238,16 @@ def analyze(args: argparse.Namespace) -> int:
     require_tools()
     metadata = probe(source)
     duration = metadata["duration"]
-    if args.max_duration > 120:
-        raise RuntimeError("The maximum supported clip length is 120 seconds.")
+    if not math.isfinite(args.min_duration) or not math.isfinite(args.max_duration):
+        raise RuntimeError("Clip duration settings must be finite numbers.")
+    if args.max_duration < 8 or args.max_duration > 120:
+        raise RuntimeError("Maximum duration must be between 8 and 120 seconds.")
     if args.min_duration < 8 or args.min_duration > args.max_duration:
         raise RuntimeError("Minimum duration must be at least 8 seconds and no greater than max duration.")
+    if not math.isfinite(args.noise_db) or not -90 <= args.noise_db <= 0:
+        raise RuntimeError("--noise-db must be between -90 and 0 dB.")
+    if not math.isfinite(args.silence_duration) or args.silence_duration <= 0:
+        raise RuntimeError("--silence-duration must be greater than zero.")
     print("VidClip | {}".format(source.name))
     print("Duration: {:.1f}s | analyzing audio activity...".format(duration))
     silences = detect_silence(source, args.noise_db, args.silence_duration, duration)
@@ -245,12 +258,17 @@ def analyze(args: argparse.Namespace) -> int:
     selected = choose_non_overlapping(candidates, args.clips, duration)
     if not selected:
         raise RuntimeError("No suitable candidates found. Try lowering --min-duration or adjusting --noise-db.")
-    outdir = Path(args.output).expanduser() if args.output else (
-        Path("output") / source.stem)
+    if args.output:
+        outdir = Path(args.output).expanduser()
+        if outdir.exists() and any(outdir.iterdir()):
+            raise RuntimeError("The selected output folder is not empty; choose a new folder to protect existing exports.")
+    else:
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+        outdir = Path("output") / source.stem / run_id
     outdir.mkdir(parents=True, exist_ok=True)
     report_items = []
     for index, item in enumerate(selected, 1):
-        filename = "clip_{:02d}_{:05.1f}s.mp4".format(index, item.start).replace(".", "_")
+        filename = make_clip_filename(index, item.start)
         target = outdir / filename
         print("Exporting {}/{}: {:.1f}s–{:.1f}s | score {}".format(
             index, len(selected), item.start, item.end, item.score))
@@ -280,7 +298,7 @@ def analyze(args: argparse.Namespace) -> int:
         for row in report_items:
             writer.writerow({k: json.dumps(row[k]) if k == "reasons" else row.get(k)
                              for k in writer.fieldnames})
-    print("\\nDone. {} clips saved to {}".format(len(selected), outdir.resolve()))
+    print("\nDone. {} clips saved to {}".format(len(selected), outdir.resolve()))
     print("Review report.json before publishing. Scores are not predictions of views.")
     return 0
 
@@ -298,7 +316,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--silence-duration", type=float, default=0.45, help="minimum silence interval in seconds")
     p.add_argument("--aspect", choices=("source", "vertical"), default="source",
                    help="preserve source frame or center-crop to 9:16")
-    p.add_argument("--output", help="output folder (default: output/<video-name>)")
+    p.add_argument("--output", help="empty output folder (default: unique timestamped folder under output/<video-name>)")
     return parser
 
 
