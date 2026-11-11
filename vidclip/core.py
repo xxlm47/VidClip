@@ -163,6 +163,7 @@ def find_candidates(duration: float, silences: Iterable[tuple[float, float]],
     if max_clips < 1:
         raise VidClipError("max_clips must be at least 1.")
 
+    silences = list(silences)
     regions = active_regions(duration, silences, merge_gap)
     candidates: list[Candidate] = []
     windows: list[tuple[float, float]] = []
