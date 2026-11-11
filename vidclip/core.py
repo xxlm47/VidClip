@@ -105,7 +105,7 @@ def detect_silences(path: str | Path, noise_db: float = -35.0,
         "-f", "null", "-",
     ], timeout=900)
     log = result.stderr
-    if "silencedetect" not in log and result.returncode != 0:
+    if result.returncode != 0:
         raise VidClipError(log.strip()[-1200:] or "Audio analysis failed.")
     starts: list[float] = []
     intervals: list[tuple[float, float]] = []
@@ -196,6 +196,20 @@ def find_candidates(duration: float, silences: Iterable[tuple[float, float]],
             if joined_end - start >= min_duration:
                 windows.append((start, joined_end))
 
+    # Score against the unmerged audio-active intervals. The segmentation pass
+    # merges short pauses to preserve sentences, but those pauses must not count
+    # as active audio when measuring a candidate.
+    raw_active: list[tuple[float, float]] = []
+    cursor = 0.0
+    for silence_start, silence_end in sorted(silences):
+        silence_start = max(0.0, min(duration, silence_start))
+        silence_end = max(silence_start, min(duration, silence_end))
+        if silence_start > cursor:
+            raw_active.append((cursor, silence_start))
+        cursor = max(cursor, silence_end)
+    if cursor < duration:
+        raw_active.append((cursor, duration))
+
     seen: set[tuple[float, float]] = set()
     for start, end in windows:
         key = (round(start, 3), round(end, 3))
@@ -203,17 +217,18 @@ def find_candidates(duration: float, silences: Iterable[tuple[float, float]],
             continue
         seen.add(key)
         length = end - start
-        covered = sum(max(0.0, min(end, b) - max(start, a)) for a, b in regions)
+        covered = sum(max(0.0, min(end, b) - max(start, a))
+                      for a, b in raw_active)
         ratio = min(1.0, covered / max(length, 0.001))
         target = min(max_duration, 60.0)
         duration_fit = max(0.0, 1.0 - abs(length - target) / max(max_duration, 60.0))
-        score = round(max(0.0, min(100.0, 55 * ratio + 45 * duration_fit)), 1)
+        score = round(max(0.0, min(100.0, 65 * ratio + 35 * duration_fit)), 1)
         candidates.append(Candidate(
             round(start, 3), round(end, 3), round(length, 3), score,
             round(ratio, 3), [
-                f"{ratio:.0%} of the range is outside detected silence",
-                "Duration fits the selected clip range",
-                "Provisional score: no transcript or semantic understanding used",
+                f"{ratio:.0%} estimated audio-active coverage (silence threshold based)",
+                f"Duration-fit component: {duration_fit:.0%}",
+                "Provisional heuristic only; no transcript, story, or highlight understanding",
             ],
         ))
 
@@ -246,6 +261,7 @@ def analyze(path: str | Path, min_duration: float = 15.0,
         "candidates": [c.to_dict() for c in candidates],
         "limitations": [
             "Audio activity is not semantic understanding.",
+            "The score measures silence-threshold activity and duration fit; it does not identify viral moments.",
             "The engine cannot yet verify story completeness, punchlines, context, or factual accuracy.",
             "Review candidates before publishing.",
         ],
