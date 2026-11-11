@@ -165,7 +165,7 @@ def choose_non_overlapping(candidates: List[Candidate], count: int,
     chosen: List[Candidate] = []
     # Encourage coverage across the source instead of returning five adjacent
     # windows from the beginning when many candidates have similar scores.
-    min_midpoint_gap = max(0.0, video_duration / max(1, count) * 0.60)
+    min_midpoint_gap = max(0.0, video_duration / max(1, count) * 0.75)
     ordered = sorted(candidates, key=lambda c: (-c.score, c.start))
     for candidate in ordered:
         midpoint = (candidate.start + candidate.end) / 2.0
