@@ -121,14 +121,18 @@ def make_candidates(regions: List[Tuple[float, float]], duration: float,
     lengths = sorted(set([min_duration, min(30.0, max_duration),
                           min(45.0, max_duration), min(60.0, max_duration),
                           min(90.0, max_duration), max_duration]))
-    for region_start, region_end in regions:
+    # Slide across the entire source. Anchoring only at the first active region
+    # would otherwise return several clips from the opening minutes of a long video.
+    stride = max(8.0, min_duration / 2.0)
+    steps = int(math.ceil(duration / stride))
+    for step in range(steps):
+        start = step * stride
+        if start >= duration:
+            continue
         for length in lengths:
             if length < min_duration or length <= 0:
                 continue
-            start = max(0.0, min(region_start - 0.8, duration - min_duration))
             end = min(duration, start + length)
-            if end - start < min_duration:
-                end = min(duration, start + min_duration)
             actual = end - start
             if actual < min_duration:
                 continue
@@ -156,17 +160,43 @@ def make_candidates(regions: List[Tuple[float, float]], duration: float,
 
 
 def choose_non_overlapping(candidates: List[Candidate], count: int,
+                           video_duration: float,
                            overlap_limit: float = 0.20) -> List[Candidate]:
     chosen: List[Candidate] = []
-    for candidate in candidates:
-        if all(
+    # Encourage coverage across the source instead of returning five adjacent
+    # windows from the beginning when many candidates have similar scores.
+    min_midpoint_gap = max(0.0, video_duration / max(1, count) * 0.60)
+    ordered = sorted(candidates, key=lambda c: (-c.score, c.start))
+    for candidate in ordered:
+        midpoint = (candidate.start + candidate.end) / 2.0
+        separated = all(
+            abs(midpoint - ((old.start + old.end) / 2.0)) >= min_midpoint_gap
+            for old in chosen
+        )
+        no_heavy_overlap = all(
             max(0.0, min(candidate.end, old.end) - max(candidate.start, old.start))
             / max(1.0, min(candidate.duration, old.duration)) <= overlap_limit
             for old in chosen
-        ):
+        )
+        if separated and no_heavy_overlap:
             chosen.append(candidate)
             if len(chosen) >= count:
                 break
+    # If temporal spreading was too strict, fill remaining slots with the
+    # highest-scoring non-overlapping candidates.
+    if len(chosen) < count:
+        for candidate in ordered:
+            if candidate in chosen:
+                continue
+            no_heavy_overlap = all(
+                max(0.0, min(candidate.end, old.end) - max(candidate.start, old.start))
+                / max(1.0, min(candidate.duration, old.duration)) <= overlap_limit
+                for old in chosen
+            )
+            if no_heavy_overlap:
+                chosen.append(candidate)
+                if len(chosen) >= count:
+                    break
     return sorted(chosen, key=lambda c: c.start)
 
 
@@ -212,7 +242,7 @@ def analyze(args: argparse.Namespace) -> int:
     if not regions:
         raise RuntimeError("No active-audio regions detected. Try a different --noise-db value.")
     candidates = make_candidates(regions, duration, args.min_duration, args.max_duration)
-    selected = choose_non_overlapping(candidates, args.clips)
+    selected = choose_non_overlapping(candidates, args.clips, duration)
     if not selected:
         raise RuntimeError("No suitable candidates found. Try lowering --min-duration or adjusting --noise-db.")
     outdir = Path(args.output).expanduser() if args.output else (
