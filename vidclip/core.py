@@ -94,7 +94,8 @@ def inspect_media(path: str | Path) -> MediaInfo:
 
 
 def detect_silences(path: str | Path, noise_db: float = -35.0,
-                    min_silence: float = 0.45) -> list[tuple[float, float]]:
+                    min_silence: float = 0.45,
+                    media_duration: float | None = None) -> list[tuple[float, float]]:
     """Return silence intervals using FFmpeg's silencedetect filter."""
     ffmpeg, _ = require_tools()
     source = Path(path).expanduser().resolve()
@@ -118,6 +119,11 @@ def detect_silences(path: str | Path, noise_db: float = -35.0,
             start = starts.pop(0) if starts else 0.0
             if end > start:
                 intervals.append((start, end))
+    # FFmpeg emits silence_start without silence_end when silence continues to EOF.
+    if starts and media_duration is not None:
+        start = starts[0]
+        if media_duration > start:
+            intervals.append((start, media_duration))
     return intervals
 
 
@@ -156,32 +162,61 @@ def find_candidates(duration: float, silences: Iterable[tuple[float, float]],
         raise VidClipError("Duration limits must satisfy 0 < min <= max <= 120 seconds.")
     if max_clips < 1:
         raise VidClipError("max_clips must be at least 1.")
+
     regions = active_regions(duration, silences, merge_gap)
     candidates: list[Candidate] = []
-    for index, (start, _) in enumerate(regions):
-        end = start
-        for next_start, next_end in regions[index:]:
-            if next_start - end > merge_gap and end > start:
+    windows: list[tuple[float, float]] = []
+
+    for index, (start, end) in enumerate(regions):
+        region_length = end - start
+        if region_length >= min_duration:
+            if region_length <= max_duration:
+                windows.append((start, end))
+            else:
+                # Long uninterrupted speech still needs useful clip windows.
+                stride = max(min_duration, max_duration * 0.75)
+                cursor = start
+                while cursor + min_duration <= end:
+                    clip_end = min(end, cursor + max_duration)
+                    if clip_end - cursor >= min_duration:
+                        windows.append((cursor, clip_end))
+                    cursor += stride
+                final_start = max(start, end - max_duration)
+                if final_start + min_duration <= end:
+                    windows.append((final_start, end))
+
+        # Also join adjacent active sections across short pauses, without exceeding max.
+        joined_end = end
+        for next_start, next_end in regions[index + 1:]:
+            if next_start - joined_end > merge_gap:
                 break
-            proposed_end = max(end, next_end)
-            if proposed_end - start > max_duration:
+            if next_end - start > max_duration:
                 break
-            end = proposed_end
-            length = end - start
-            if length >= min_duration:
-                covered = sum(max(0.0, min(end, b) - max(start, a)) for a, b in regions)
-                ratio = min(1.0, covered / max(length, 0.001))
-                target = min(max_duration, 60.0)
-                duration_fit = max(0.0, 1.0 - abs(length - target) / max(max_duration, 60.0))
-                score = round(max(0.0, min(100.0, 55 * ratio + 45 * duration_fit)), 1)
-                candidates.append(Candidate(
-                    round(start, 3), round(end, 3), round(length, 3), score,
-                    round(ratio, 3), [
-                        f"{ratio:.0%} of the range is outside detected silence",
-                        "Duration fits the selected clip range",
-                        "Provisional score: no transcript or semantic understanding used",
-                    ],
-                ))
+            joined_end = next_end
+            if joined_end - start >= min_duration:
+                windows.append((start, joined_end))
+
+    seen: set[tuple[float, float]] = set()
+    for start, end in windows:
+        key = (round(start, 3), round(end, 3))
+        if key in seen:
+            continue
+        seen.add(key)
+        length = end - start
+        covered = sum(max(0.0, min(end, b) - max(start, a)) for a, b in regions)
+        ratio = min(1.0, covered / max(length, 0.001))
+        target = min(max_duration, 60.0)
+        duration_fit = max(0.0, 1.0 - abs(length - target) / max(max_duration, 60.0))
+        score = round(max(0.0, min(100.0, 55 * ratio + 45 * duration_fit)), 1)
+        candidates.append(Candidate(
+            round(start, 3), round(end, 3), round(length, 3), score,
+            round(ratio, 3), [
+                f"{ratio:.0%} of the range is outside detected silence",
+                "Duration fits the selected clip range",
+                "Provisional score: no transcript or semantic understanding used",
+            ],
+        ))
+
     candidates.sort(key=lambda c: (c.score, c.active_ratio, c.duration), reverse=True)
     selected: list[Candidate] = []
     for candidate in candidates:
@@ -192,14 +227,13 @@ def find_candidates(duration: float, silences: Iterable[tuple[float, float]],
             break
     return sorted(selected, key=lambda c: c.start)
 
-
 def analyze(path: str | Path, min_duration: float = 15.0,
             max_duration: float = 120.0, max_clips: int = 5,
             noise_db: float = -35.0, min_silence: float = 0.45) -> dict:
     info = inspect_media(path)
     if not info.has_audio:
         raise VidClipError("This first engine requires an audio stream. Video-only analysis is planned.")
-    silences = detect_silences(path, noise_db, min_silence)
+    silences = detect_silences(path, noise_db, min_silence, info.duration)
     candidates = find_candidates(info.duration, silences, min_duration, max_duration, max_clips)
     return {
         "engine": "vidclip-offline-audio-v1",
