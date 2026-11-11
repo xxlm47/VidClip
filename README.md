@@ -82,7 +82,7 @@ Each run creates a project folder under \`output/\` containing:
 
 ## How the first scoring pass works
 
-The offline engine uses audio activity as a **candidate finder**, not as semantic understanding. It evaluates active-audio coverage, duration fit, and boundary padding. This can identify sections worth reviewing, but it cannot reliably know whether a joke lands, a story is complete, or a statement is misleading.
+The offline engine uses audio activity as a **candidate finder**, not as semantic understanding. It evaluates estimated audio-active coverage (using the configured silence threshold) and duration fit. It does not yet evaluate semantic highlights, story boundaries, hook strength, or boundary padding. This can filter out long silent stretches and rank rough candidate windows, but it cannot reliably identify the best moment, whether a joke lands, whether a story is complete, or whether a statement is misleading. Treat the score as a basic filter—not a view prediction.
 
 Planned transcript-aware scoring will add hook quality, standalone context, story completeness, useful information, emotional signals, and ending quality. Each signal will be reported separately so users can understand why a moment ranked highly.
 
