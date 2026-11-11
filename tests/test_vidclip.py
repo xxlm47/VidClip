@@ -20,10 +20,14 @@ class VidClipBaselineTests(unittest.TestCase):
             vidclip.Candidate(2, 32, 28, .93, 89, []),
             vidclip.Candidate(60, 90, 28, .93, 88, []),
         ]
-        selected = vidclip.choose_non_overlapping(candidates, 2)
+        selected = vidclip.choose_non_overlapping(candidates, 2, 100.0)
         self.assertEqual(len(selected), 2)
         self.assertEqual(selected[0].start, 0)
         self.assertEqual(selected[1].start, 60)
+
+    def test_candidate_scan_covers_later_parts_of_long_video(self):
+        candidates = vidclip.make_candidates([(0.0, 300.0)], 300.0, 15.0, 120.0)
+        self.assertTrue(any(candidate.start > 150.0 for candidate in candidates))
 
     def test_silence_only_input_has_no_active_regions(self):
         self.assertEqual(vidclip.active_regions([(0.0, 20.0)], 20.0), [])
