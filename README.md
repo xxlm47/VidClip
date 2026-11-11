@@ -66,7 +66,7 @@ Choose a shorter ceiling:
 python vidclip.py analyze ~/storage/shared/Download/your-video.mp4 --max-duration 60 --clips 5
 ```
 
-Outputs are written under `output/<video-name>/` by default. Use `--output /path/to/folder` to choose another location.
+Outputs are written under a unique timestamped folder inside `output/<video-name>/` by default, so a new run does not overwrite earlier clips. Use `--output /path/to/empty-folder` to choose another location; VidClip refuses to overwrite a non-empty custom output folder.
 
 Run the lightweight unit tests (no video fixture or AI model required):
 
