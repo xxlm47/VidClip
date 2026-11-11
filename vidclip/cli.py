@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
 
         report = analyze(args.video, args.min_duration, args.max_duration,
                          args.max_clips, args.noise_db, args.min_silence)
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
         project = Path("output") / f"{Path(args.video).stem}-{args.command}-{stamp}"
         project.mkdir(parents=True, exist_ok=True)
         report["project_dir"] = str(project)
@@ -60,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
                   f"({item['duration']:.1f}s) | provisional score {item['score']}/100")
 
         if args.command == "clip":
+            if not 0 <= args.crf <= 51:
+                raise VidClipError("--crf must be between 0 and 51.")
             clips_dir = project / "clips"
             manifest = []
             for number, item in enumerate(report["candidates"], 1):
