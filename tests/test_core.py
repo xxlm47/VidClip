@@ -27,6 +27,11 @@ class CandidateTests(unittest.TestCase):
         with self.assertRaises(VidClipError):
             find_candidates(60, [], min_duration=10, max_duration=121)
 
+    def test_long_uninterrupted_speech_is_split(self):
+        result = find_candidates(300, [], min_duration=30, max_duration=120, max_clips=5)
+        self.assertTrue(result)
+        self.assertTrue(all(30 <= item.duration <= 120 for item in result))
+
 
 if __name__ == "__main__":
     unittest.main()
