@@ -68,6 +68,8 @@ def probe(path: Path) -> dict:
     streams = data.get("streams", [])
     if not any(s.get("codec_type") == "video" for s in streams):
         raise RuntimeError("The selected file has no video stream.")
+    if not any(s.get("codec_type") == "audio" for s in streams):
+        raise RuntimeError("This first version needs an audio stream to detect moments. Silent-video detection is planned.")
     return {"duration": duration, "format": data.get("format", {}).get("format_name"),
             "streams": streams}
 
@@ -175,7 +177,8 @@ def export_clip(source: Path, candidate: Candidate, target: Path,
     if aspect == "vertical":
         vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920"
     else:
-        vf = "scale=1920:1920:force_original_aspect_ratio=decrease"
+        # Preserve source aspect ratio; trim a possible odd edge pixel for yuv420p.
+        vf = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-ss", "{:.3f}".format(start), "-i", str(source),
