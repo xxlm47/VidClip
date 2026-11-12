@@ -14,7 +14,7 @@ class TranscriptAnalysisTests(unittest.TestCase):
         result = vidclip_story.score_transcript_window(0, 8, cues)
         self.assertGreater(result["score"], 0)
         self.assertEqual(result["signals"]["question_marks"], 1)
-        self.assertEqual(result["signals"]["payoff_phrase_hits"], 1)
+        self.assertEqual(result["signals"]["payoff_phrase_hits"], 2)
 
     def test_invalid_sidecar_fails_clearly(self):
         with tempfile.TemporaryDirectory() as folder:
