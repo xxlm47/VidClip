@@ -8,7 +8,7 @@ VidClip can add readable captions to every selected clip.
 2. `--whisper-model /path/to/model.bin`: transcribe the source locally with whisper.cpp when no sidecar is supplied.
 3. If neither is supplied, VidClip does not invent dialogue. It exports without captions and explains that transcription was not enabled.
 
-The current implementation does not yet discover or extract subtitle tracks embedded inside the source container. Export an embedded track to SRT first, or use local Whisper transcription.
+VidClip first tries to extract an embedded text subtitle track from the source container. Image-based subtitle tracks (such as PGS/DVD subtitles) are skipped; if no usable text track is found, it can fall back to local Whisper transcription when a model is supplied.
 
 ## Local Whisper setup
 
