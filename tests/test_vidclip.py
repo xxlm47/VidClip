@@ -45,8 +45,8 @@ class VidClipBaselineTests(unittest.TestCase):
         self.assertTrue(name.endswith(".mp4"))
 
     def test_story_evidence_can_change_candidate_ranking(self):
-        technical_winner = vidclip.Candidate(0, 30, 29, .97, 95, [])
-        story_winner = vidclip.Candidate(60, 90, 20, .67, 65, [])
+        technical_winner = vidclip.Candidate(0, 30, 25, .83, 80, [])
+        story_winner = vidclip.Candidate(60, 90, 20, .67, 80, [])
         story_winner.story_score = 100
         selected = vidclip.choose_non_overlapping(
             [technical_winner, story_winner], 1, 100.0)
