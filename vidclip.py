@@ -331,7 +331,7 @@ def analyze(args: argparse.Namespace) -> int:
         print("Exporting {}/{}: {:.1f}s–{:.1f}s | score {}".format(
             index, len(selected), item.start, item.end, item.score))
         clip_subtitle = None
-        if transcript_cues and getattr(args, "subtitle_mode", "sidecar") != "none":
+        if transcript_cues and getattr(args, "subtitle_mode", "burn") != "none":
             clip_subtitle = outdir / (target.stem + ".srt")
             write_clip_srt(clip_subtitle, transcript_cues, item.start, item.end)
             if getattr(args, "subtitle_mode", "sidecar") == "burn":
@@ -399,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcript", help="optional timed .srt/.vtt sidecar; takes priority over auto transcription")
     p.add_argument("--whisper-model", help="local whisper.cpp GGML/GGUF model; enables offline auto-transcription when no sidecar is supplied")
     p.add_argument("--whisper-cli", default="whisper-cli", help="whisper.cpp executable (default: whisper-cli)")
-    p.add_argument("--subtitle-mode", choices=("none", "sidecar", "burn"), default="sidecar", help="write editable per-clip SRT files, burn captions into video, or disable subtitle output (default: sidecar)")
+    p.add_argument("--subtitle-mode", choices=("none", "sidecar", "burn"), default="burn", help="burn captions into each video (default), write editable SRT sidecars, or disable subtitles")
     p.add_argument("--output", help="empty output folder (default: unique timestamped folder under output/<video-name>)")
     return parser
 
