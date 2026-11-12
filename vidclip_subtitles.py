@@ -80,3 +80,34 @@ def burn_subtitles_filter(path: Path) -> str:
     for char in (":", "'", ",", "[", "]"):
         value = value.replace(char, "\\" + char)
     return "subtitles=filename='{}'".format(value)
+
+def extract_embedded_subtitles(source: Path, workdir: Path):
+    """Extract the first text-based embedded subtitle stream to SRT, if present."""
+    probe = _run([
+        "ffprobe", "-v", "error", "-select_streams", "s",
+        "-show_entries", "stream=index,codec_name", "-of", "json", str(source)
+    ], timeout=60)
+    import json
+    try:
+        streams = json.loads(probe.stdout).get("streams", [])
+    except (ValueError, TypeError):
+        streams = []
+    image_codecs = {"hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub"}
+    workdir.mkdir(parents=True, exist_ok=True)
+    for stream in streams:
+        if stream.get("codec_name") in image_codecs:
+            continue
+        index = stream.get("index")
+        if index is None:
+            continue
+        target = workdir / "vidclip_embedded_subtitles.srt"
+        try:
+            _run([
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
+                "-map", "0:{}".format(index), "-c:s", "srt", str(target)
+            ], timeout=300)
+        except RuntimeError:
+            continue
+        if target.is_file() and target.stat().st_size:
+            return target
+    return None
