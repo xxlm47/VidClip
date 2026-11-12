@@ -44,6 +44,14 @@ class VidClipBaselineTests(unittest.TestCase):
         self.assertEqual(name, "clip_02_123_4s.mp4")
         self.assertTrue(name.endswith(".mp4"))
 
+    def test_story_evidence_can_change_candidate_ranking(self):
+        technical_winner = vidclip.Candidate(0, 30, 29, .97, 95, [])
+        story_winner = vidclip.Candidate(60, 90, 20, .67, 65, [])
+        story_winner.story_score = 100
+        selected = vidclip.choose_non_overlapping(
+            [technical_winner, story_winner], 1, 100.0)
+        self.assertEqual(selected[0].start, 60)
+
     def test_silence_only_input_has_no_active_regions(self):
         self.assertEqual(vidclip.active_regions([(0.0, 20.0)], 20.0), [])
 
