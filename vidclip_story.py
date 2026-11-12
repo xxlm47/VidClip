@@ -9,14 +9,18 @@ class Cue:
     end: float
     text: str
 
-TIMESTAMP = re.compile(r"(?P<start>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,.]\d{3})")
+TIMESTAMP = re.compile(r"(?P<start>(?:\d{2}:)?\d{2}:\d{2}[,.]\d{3})\s*-->\s*(?P<end>(?:\d{2}:)?\d{2}:\d{2}[,.]\d{3})")
 TAG = re.compile(r"<[^>]+>")
 HOOK_TERMS = ("what happened", "here's why", "the reason", "watch what", "look at", "how did", "why would", "what if")
 PAYOFF_TERMS = ("but then", "until", "turns out", "found out", "the result", "in the end", "that's when")
 EMOTION_TERMS = ("scared", "angry", "crying", "shocked", "terrified", "furious", "worried", "upset", "surprised", "laughing", "screaming")
 
 def _seconds(value):
-    hours, minutes, seconds = value.replace(",", ".").split(":")
+    parts = value.replace(",", ".").split(":")
+    if len(parts) == 2:
+        minutes, seconds = parts
+        return int(minutes) * 60 + float(seconds)
+    hours, minutes, seconds = parts
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 def parse_subtitles(path):
