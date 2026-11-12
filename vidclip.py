@@ -22,11 +22,11 @@ import tempfile
 
 try:
     from vidclip_story import attach_transcript_scores, parse_subtitles
-    from vidclip_subtitles import transcribe_with_whisper, write_clip_srt, burn_subtitles_filter
+    from vidclip_subtitles import transcribe_with_whisper, write_clip_srt, burn_subtitles_filter, extract_embedded_subtitles
 except ImportError:
     attach_transcript_scores = None
     parse_subtitles = None
-    transcribe_with_whisper = write_clip_srt = burn_subtitles_filter = None
+    transcribe_with_whisper = write_clip_srt = burn_subtitles_filter = extract_embedded_subtitles = None
 
 
 @dataclass
@@ -298,11 +298,21 @@ def analyze(args: argparse.Namespace) -> int:
     transcript_path = getattr(args, "transcript", None)
     transcript_cues = []
     generated_transcript = False
+    embedded_transcript = False
     temp_transcript_dir = None
+    if not transcript_path:
+        if extract_embedded_subtitles is None:
+            raise RuntimeError("Subtitle helper unavailable; restore vidclip_subtitles.py.")
+        temp_transcript_dir = tempfile.TemporaryDirectory(prefix="vidclip-subtitles-")
+        transcript_path = extract_embedded_subtitles(source, Path(temp_transcript_dir.name))
+        if transcript_path:
+            embedded_transcript = True
+            print("Subtitles: extracted an embedded text subtitle track.")
     if not transcript_path and getattr(args, "whisper_model", None):
         if transcribe_with_whisper is None:
             raise RuntimeError("Subtitle helper unavailable; restore vidclip_subtitles.py.")
-        temp_transcript_dir = tempfile.TemporaryDirectory(prefix="vidclip-subtitles-")
+        if temp_transcript_dir is None:
+            temp_transcript_dir = tempfile.TemporaryDirectory(prefix="vidclip-subtitles-")
         transcript_path = transcribe_with_whisper(source, Path(temp_transcript_dir.name),
                                                    args.whisper_model, args.whisper_cli)
         generated_transcript = True
@@ -357,7 +367,7 @@ def analyze(args: argparse.Namespace) -> int:
                      if transcript_cues else "FFmpeg silence/activity detection; no transcription or semantic AI"),
         "score_warning": ("Technical scores estimate audio activity and compactness; transcript scores are lexical heuristics. "
                           "Neither predicts audience interest or virality."),
-        "transcript": {"provided": bool(transcript_cues), "generated_locally": generated_transcript,
+        "transcript": {"provided": bool(transcript_cues), "extracted_from_source": embedded_transcript, "generated_locally": generated_transcript,
                        "path": str(transcript_path) if transcript_cues else None,
                        "cue_count": len(transcript_cues),
                        "subtitle_mode": getattr(args, "subtitle_mode", "sidecar")},
