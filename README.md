@@ -101,7 +101,7 @@ See [docs/VIDEO-ANALYSIS-PIPELINE.md](docs/VIDEO-ANALYSIS-PIPELINE.md) and [docs
 
 ## Planned upgrades
 
-- [x] Optional local Whisper.cpp transcription and per-clip caption export.\n- [ ] Embedded subtitle-track discovery and extraction (some source formats use image-based subtitles).
+- [x] Optional local Whisper.cpp transcription and per-clip caption export.\n- [x] Extract embedded text subtitle tracks; image-based subtitle tracks still need conversion or transcription.
 - [ ] Semantic highlight ranking: hook, payoff, story completeness, useful information, context.
 - [ ] Scene-change and motion signals as independent, explainable score components.
 - [ ] Caption generation and editable subtitle files.
