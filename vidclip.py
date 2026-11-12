@@ -347,7 +347,7 @@ def analyze(args: argparse.Namespace) -> int:
     with (outdir / "report.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=[
             "clip", "start", "end", "duration", "active_seconds",
-            "active_ratio", "score", "story_score", "score_type", "reasons"])
+            "active_ratio", "score", "story_score", "score_type", "reasons", "story_analysis", "export_qa"])
         writer.writeheader()
         for row in report_items:
             writer.writerow({k: json.dumps(row.get(k)) if k in ("reasons", "story_analysis", "export_qa") else row.get(k)
