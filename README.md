@@ -18,7 +18,8 @@ VidClip turns a long video you have permission to use into a shortlist of shorte
 ## MVP features
 
 - Probe video metadata with FFprobe.
-- Detect active-audio regions and silence boundaries with FFmpeg.
+- Detect active-audio regions and silence boundaries with FFmpeg when audio exists.
+- Accept silent video sources using explicitly unscored video-only candidate windows.
 - Generate candidate windows up to 120 seconds.
 - Rank candidates using speech/activity density and duration.
 - Select configurable non-overlapping clips.
@@ -77,8 +78,8 @@ python -m unittest discover -s tests -v
 ## How the baseline works
 
 1. FFprobe reads duration, dimensions, and stream information.
-2. FFmpeg's `silencedetect` filter finds quiet intervals.
-3. VidClip converts the remaining active intervals into candidate windows.
+2. When audio exists, FFmpeg's `silencedetect` filter finds quiet intervals.
+3. VidClip converts the remaining active intervals into candidate windows. For silent sources, it generates unscored video-only windows instead.
 4. Candidates are scored using active-audio coverage and usable duration.
 5. Greedy overlap suppression keeps the best distinct moments.
 6. FFmpeg exports each selected range and a machine-readable report.
@@ -101,7 +102,9 @@ See [docs/VIDEO-ANALYSIS-PIPELINE.md](docs/VIDEO-ANALYSIS-PIPELINE.md) and [docs
 
 ## Planned upgrades
 
-- [x] Optional local Whisper.cpp transcription and per-clip caption export.\n- [x] Extract embedded text subtitle tracks; image-based subtitle tracks still need conversion or transcription.
+- [x] Optional local Whisper.cpp transcription and per-clip caption export.
+- [x] Extract embedded text subtitle tracks; image-based subtitle tracks still need conversion or transcription.
+- [x] Silent-video input support with honest zero-score reporting.
 - [ ] Semantic highlight ranking: hook, payoff, story completeness, useful information, context.
 - [ ] Scene-change and motion signals as independent, explainable score components.
 - [ ] Caption generation and editable subtitle files.

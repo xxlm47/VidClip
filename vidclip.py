@@ -80,10 +80,9 @@ def probe(path: Path) -> dict:
     streams = data.get("streams", [])
     if not any(s.get("codec_type") == "video" for s in streams):
         raise RuntimeError("The selected file has no video stream.")
-    if not any(s.get("codec_type") == "audio" for s in streams):
-        raise RuntimeError("This first version needs an audio stream to detect moments. Silent-video detection is planned.")
+    has_audio = any(s.get("codec_type") == "audio" for s in streams)
     return {"duration": duration, "format": data.get("format", {}).get("format_name"),
-            "streams": streams}
+            "streams": streams, "has_audio": has_audio}
 
 
 def detect_silence(path: Path, noise_db: float, min_silence: float,
@@ -126,7 +125,8 @@ def overlap_seconds(start: float, end: float, regions: List[Tuple[float, float]]
 
 
 def make_candidates(regions: List[Tuple[float, float]], duration: float,
-                    min_duration: float, max_duration: float) -> List[Candidate]:
+                    min_duration: float, max_duration: float,
+                    allow_silent: bool = False) -> List[Candidate]:
     # Generate a small set of windows anchored at active regions. This avoids
     # scanning every second of a long file and keeps memory use negligible.
     candidates: List[Candidate] = []
@@ -150,7 +150,12 @@ def make_candidates(regions: List[Tuple[float, float]], duration: float,
                 continue
             active = overlap_seconds(start, end, regions)
             ratio = min(1.0, active / actual)
-            if active < min(8.0, min_duration * 0.35):
+            if active < min(8.0, min_duration * 0.35) and not allow_silent:
+                continue
+            # Video-only candidates are deliberately unscored: do not invent an audio score.
+            if allow_silent and active <= 0.0:
+                candidates.append(Candidate(start, end, 0.0, 0.0, 0.0,
+                    ["no audio stream; video-only candidate requires manual review"]))
                 continue
             # Technical ranking only. Prefer meaningful active coverage, while
             # mildly preferring compact moments over padding long clips.
@@ -289,12 +294,18 @@ def analyze(args: argparse.Namespace) -> int:
     if not math.isfinite(args.silence_duration) or args.silence_duration <= 0:
         raise RuntimeError("--silence-duration must be greater than zero.")
     print("VidClip | {}".format(source.name))
-    print("Duration: {:.1f}s | analyzing audio activity...".format(duration))
-    silences = detect_silence(source, args.noise_db, args.silence_duration, duration)
-    regions = active_regions(silences, duration)
-    if not regions:
-        raise RuntimeError("No active-audio regions detected. Try a different --noise-db value.")
-    candidates = make_candidates(regions, duration, args.min_duration, args.max_duration)
+    has_audio = metadata["has_audio"]
+    if has_audio:
+        print("Duration: {:.1f}s | analyzing audio activity...".format(duration))
+        silences = detect_silence(source, args.noise_db, args.silence_duration, duration)
+        regions = active_regions(silences, duration)
+        if not regions:
+            raise RuntimeError("No active-audio regions detected. Try a different --noise-db value.")
+    else:
+        print("Duration: {:.1f}s | no audio stream; creating unscored video-only candidates.".format(duration))
+        regions = []
+    candidates = make_candidates(regions, duration, args.min_duration, args.max_duration,
+                                 allow_silent=not has_audio)
     transcript_path = getattr(args, "transcript", None)
     transcript_cues = []
     generated_transcript = False
@@ -363,10 +374,13 @@ def analyze(args: argparse.Namespace) -> int:
         "version": "0.1.0-dev",
         "source": source.name,
         "source_duration_seconds": round(duration, 3),
-        "analysis": ("FFmpeg silence/activity plus optional timed-subtitle lexical heuristics"
+        "source_has_audio": has_audio,
+        "analysis": ("video-only candidate windows (no audio stream)" if not has_audio else
+                     "FFmpeg silence/activity plus optional timed-subtitle lexical heuristics"
                      if transcript_cues else "FFmpeg silence/activity detection; no transcription or semantic AI"),
         "score_warning": ("Technical scores estimate audio activity and compactness; transcript scores are lexical heuristics. "
-                          "Neither predicts audience interest or virality."),
+                          "Video-only candidates receive zero audio score and require manual review. "
+                          "No score predicts audience interest or virality."),
         "transcript": {"provided": bool(transcript_cues), "extracted_from_source": embedded_transcript, "generated_locally": generated_transcript,
                        "path": str(transcript_path) if transcript_cues else None,
                        "cue_count": len(transcript_cues),
@@ -395,7 +409,7 @@ def analyze(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Find and export audio-active moments from a video (offline baseline).")
+        description="Find and export video moments offline; audio signals improve ranking when available.")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("analyze", help="analyze a video and export ranked clips")
     p.add_argument("input", help="path to a local video file")
