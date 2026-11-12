@@ -85,6 +85,20 @@ python -m unittest discover -s tests -v
 
 **Important limitation:** audio activity is only a proxy. A loud moment is not necessarily interesting, and a quiet explanation may be excellent. This version does not transcribe words or understand context. The report labels its score as a baseline technical score, not a viral score.
 
+## Story-aware mode (optional, no AI required)
+
+If you already have a timed subtitle file, pass it with `--transcript`:
+
+```bash
+python vidclip.py analyze video.mp4 --transcript video.srt --clips 5 --max-duration 120
+```
+
+VidClip parses SRT/WebVTT and adds separate transcript evidence for subtitle coverage, word density, question/exclamation marks, and a small set of hook/payoff/emotion-word cues. These are transparent lexical heuristics, not true emotion detection or viral predictions. The JSON report keeps technical and transcript scores separate. Without a sidecar, the original offline audio-only workflow still works.
+
+Every exported clip is checked for readable media, duration, video stream, and expected audio stream. Invalid exports stop the run with a clear error.
+
+See [docs/VIDEO-ANALYSIS-PIPELINE.md](docs/VIDEO-ANALYSIS-PIPELINE.md) and [docs/SAMPLE-VIDEO-ANALYSIS.md](docs/SAMPLE-VIDEO-ANALYSIS.md).
+
 ## Planned upgrades
 
 - [ ] Sentence-aware transcription provider (optional; local or free hosted provider).

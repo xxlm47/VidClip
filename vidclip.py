@@ -19,6 +19,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+try:
+    from vidclip_story import attach_transcript_scores, parse_subtitles
+except ImportError:
+    attach_transcript_scores = None
+    parse_subtitles = None
+
 
 @dataclass
 class Candidate:
@@ -28,6 +34,8 @@ class Candidate:
     active_ratio: float
     score: float
     reasons: List[str]
+    story_score: float = 0.0
+    story_analysis: Optional[dict] = None
 
     @property
     def duration(self) -> float:
@@ -167,7 +175,9 @@ def choose_non_overlapping(candidates: List[Candidate], count: int,
     # Encourage coverage across the source instead of returning five adjacent
     # windows from the beginning when many candidates have similar scores.
     min_midpoint_gap = max(0.0, video_duration / max(1, count) * 0.75)
-    ordered = sorted(candidates, key=lambda c: (-c.score, c.start))
+    ordered = sorted(candidates, key=lambda c: (
+        -(0.55 * c.score + 0.45 * c.story_score) if c.story_score > 0 else -c.score,
+        c.start))
     for candidate in ordered:
         midpoint = (candidate.start + candidate.end) / 2.0
         separated = all(
@@ -229,6 +239,33 @@ def export_clip(source: Path, candidate: Candidate, target: Path,
         raise RuntimeError("Export failed for clip {}: {}".format(index, result.stderr[-1200:]))
 
 
+def validate_export(path: Path, expected_duration: float, has_audio: bool) -> dict:
+    """Verify the exported file can be probed and contains expected streams."""
+    result = run([
+        "ffprobe", "-v", "error", "-show_entries",
+        "format=duration:stream=codec_type,width,height",
+        "-of", "json", str(path)
+    ], timeout=60)
+    if result.returncode:
+        raise RuntimeError("Export QA failed for {}: {}".format(path.name, result.stderr[-1000:]))
+    try:
+        data = json.loads(result.stdout)
+        actual_duration = float(data["format"]["duration"])
+    except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+        raise RuntimeError("Export QA could not read duration for " + path.name)
+    streams = data.get("streams", [])
+    has_video = any(item.get("codec_type") == "video" for item in streams)
+    exported_audio = any(item.get("codec_type") == "audio" for item in streams)
+    if not has_video or (has_audio and not exported_audio):
+        raise RuntimeError("Export QA found a missing required stream in " + path.name)
+    if actual_duration <= 0 or actual_duration > expected_duration + 1.5:
+        raise RuntimeError("Export QA found an invalid duration in " + path.name)
+    video = next(item for item in streams if item.get("codec_type") == "video")
+    return {"valid": True, "duration_seconds": round(actual_duration, 3),
+            "has_video": has_video, "has_audio": exported_audio,
+            "width": video.get("width"), "height": video.get("height")}
+
+
 def analyze(args: argparse.Namespace) -> int:
     source = Path(args.input).expanduser().resolve()
     if not source.is_file():
@@ -255,6 +292,14 @@ def analyze(args: argparse.Namespace) -> int:
     if not regions:
         raise RuntimeError("No active-audio regions detected. Try a different --noise-db value.")
     candidates = make_candidates(regions, duration, args.min_duration, args.max_duration)
+    transcript_path = getattr(args, "transcript", None)
+    transcript_cues = []
+    if transcript_path:
+        if parse_subtitles is None or attach_transcript_scores is None:
+            raise RuntimeError("Transcript helper is unavailable; restore vidclip_story.py.")
+        transcript_cues = parse_subtitles(transcript_path)
+        attach_transcript_scores(candidates, transcript_cues)
+        print("Transcript: {} timed cues loaded; ranking includes lexical evidence.".format(len(transcript_cues)))
     selected = choose_non_overlapping(candidates, args.clips, duration)
     if not selected:
         raise RuntimeError("No suitable candidates found. Try lowering --min-duration or adjusting --noise-db.")
@@ -273,7 +318,10 @@ def analyze(args: argparse.Namespace) -> int:
         print("Exporting {}/{}: {:.1f}s–{:.1f}s | score {}".format(
             index, len(selected), item.start, item.end, item.score))
         export_clip(source, item, target, args.aspect, index)
+        qa = validate_export(target, item.duration, any(
+            stream.get("codec_type") == "audio" for stream in metadata["streams"]))
         entry = asdict(item)
+        entry["export_qa"] = qa
         entry.update({"clip": filename, "duration": round(item.duration, 2),
                       "score_type": "baseline_technical_not_viral"})
         report_items.append(entry)
@@ -282,8 +330,14 @@ def analyze(args: argparse.Namespace) -> int:
         "version": "0.1.0-dev",
         "source": source.name,
         "source_duration_seconds": round(duration, 3),
-        "analysis": "FFmpeg silence/activity detection; no transcription or semantic AI",
-        "score_warning": "Scores estimate audio activity and compactness, not audience interest or virality.",
+        "analysis": ("FFmpeg silence/activity plus optional timed-subtitle lexical heuristics"
+                     if transcript_cues else "FFmpeg silence/activity detection; no transcription or semantic AI"),
+        "score_warning": ("Technical scores estimate audio activity and compactness; transcript scores are lexical heuristics. "
+                          "Neither predicts audience interest or virality."),
+        "transcript": {"provided": bool(transcript_cues),
+                       "path": str(transcript_path) if transcript_cues else None,
+                       "cue_count": len(transcript_cues)},
+        "review_required": True,
         "settings": {"noise_db": args.noise_db, "silence_duration": args.silence_duration,
                      "min_duration": args.min_duration, "max_duration": args.max_duration,
                      "aspect": args.aspect},
@@ -293,10 +347,10 @@ def analyze(args: argparse.Namespace) -> int:
     with (outdir / "report.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=[
             "clip", "start", "end", "duration", "active_seconds",
-            "active_ratio", "score", "score_type", "reasons"])
+            "active_ratio", "score", "story_score", "score_type", "reasons", "story_analysis", "export_qa"])
         writer.writeheader()
         for row in report_items:
-            writer.writerow({k: json.dumps(row[k]) if k == "reasons" else row.get(k)
+            writer.writerow({k: json.dumps(row.get(k)) if k in ("reasons", "story_analysis", "export_qa") else row.get(k)
                              for k in writer.fieldnames})
     print("\nDone. {} clips saved to {}".format(len(selected), outdir.resolve()))
     print("Review report.json before publishing. Scores are not predictions of views.")
@@ -316,6 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--silence-duration", type=float, default=0.45, help="minimum silence interval in seconds")
     p.add_argument("--aspect", choices=("source", "vertical"), default="source",
                    help="preserve source frame or center-crop to 9:16")
+    p.add_argument("--transcript", help="optional timed .srt/.vtt sidecar for story-aware lexical ranking")
     p.add_argument("--output", help="empty output folder (default: unique timestamped folder under output/<video-name>)")
     return parser
 
