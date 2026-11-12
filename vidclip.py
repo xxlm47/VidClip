@@ -303,7 +303,7 @@ def analyze(args: argparse.Namespace) -> int:
             raise RuntimeError("No active-audio regions detected. Try a different --noise-db value.")
     else:
         print("Duration: {:.1f}s | no audio stream; creating unscored video-only candidates.".format(duration))
-        regions = [(0.0, duration)]
+        regions = []
     candidates = make_candidates(regions, duration, args.min_duration, args.max_duration,
                                  allow_silent=not has_audio)
     transcript_path = getattr(args, "transcript", None)
@@ -374,6 +374,7 @@ def analyze(args: argparse.Namespace) -> int:
         "version": "0.1.0-dev",
         "source": source.name,
         "source_duration_seconds": round(duration, 3),
+        "source_has_audio": has_audio,
         "analysis": ("video-only candidate windows (no audio stream)" if not has_audio else
                      "FFmpeg silence/activity plus optional timed-subtitle lexical heuristics"
                      if transcript_cues else "FFmpeg silence/activity detection; no transcription or semantic AI"),
