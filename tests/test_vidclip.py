@@ -57,7 +57,7 @@ class VidClipBaselineTests(unittest.TestCase):
 
     def test_silent_video_candidates_are_unscored_not_discarded(self):
         candidates = vidclip.make_candidates(
-            [(0.0, 90.0)], 90.0, 15.0, 60.0, allow_silent=True)
+            [], 90.0, 15.0, 60.0, allow_silent=True)
         self.assertTrue(candidates)
         self.assertTrue(all(candidate.score == 0.0 for candidate in candidates))
         self.assertTrue(all(candidate.active_ratio == 0.0 for candidate in candidates))
