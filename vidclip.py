@@ -18,12 +18,15 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
+import tempfile
 
 try:
     from vidclip_story import attach_transcript_scores, parse_subtitles
+    from vidclip_subtitles import transcribe_with_whisper, write_clip_srt, burn_subtitles_filter
 except ImportError:
     attach_transcript_scores = None
     parse_subtitles = None
+    transcribe_with_whisper = write_clip_srt = burn_subtitles_filter = None
 
 
 @dataclass
@@ -218,7 +221,7 @@ def make_clip_filename(index: int, start: float) -> str:
 
 
 def export_clip(source: Path, candidate: Candidate, target: Path,
-                aspect: str, index: int) -> None:
+                aspect: str, index: int, subtitle_path: Optional[Path] = None) -> None:
     start = max(0.0, candidate.start)
     duration = candidate.duration
     if aspect == "vertical":
@@ -230,7 +233,7 @@ def export_clip(source: Path, candidate: Candidate, target: Path,
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-ss", "{:.3f}".format(start), "-i", str(source),
         "-t", "{:.3f}".format(duration), "-map", "0:v:0", "-map", "0:a?",
-        "-vf", vf, "-c:v", "libx264", "-preset", "veryfast",
+        "-vf", (vf + "," + burn_subtitles_filter(subtitle_path) if subtitle_path else vf), "-c:v", "libx264", "-preset", "veryfast",
         "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac",
         "-b:a", "128k", "-movflags", "+faststart", str(target)
     ]
@@ -294,6 +297,16 @@ def analyze(args: argparse.Namespace) -> int:
     candidates = make_candidates(regions, duration, args.min_duration, args.max_duration)
     transcript_path = getattr(args, "transcript", None)
     transcript_cues = []
+    generated_transcript = False
+    temp_transcript_dir = None
+    if not transcript_path and getattr(args, "whisper_model", None):
+        if transcribe_with_whisper is None:
+            raise RuntimeError("Subtitle helper unavailable; restore vidclip_subtitles.py.")
+        temp_transcript_dir = tempfile.TemporaryDirectory(prefix="vidclip-subtitles-")
+        transcript_path = transcribe_with_whisper(source, Path(temp_transcript_dir.name),
+                                                   args.whisper_model, args.whisper_cli)
+        generated_transcript = True
+        print("Automatic subtitles: generated locally with whisper.cpp.")
     if transcript_path:
         if parse_subtitles is None or attach_transcript_scores is None:
             raise RuntimeError("Transcript helper is unavailable; restore vidclip_story.py.")
@@ -317,7 +330,17 @@ def analyze(args: argparse.Namespace) -> int:
         target = outdir / filename
         print("Exporting {}/{}: {:.1f}s–{:.1f}s | score {}".format(
             index, len(selected), item.start, item.end, item.score))
-        export_clip(source, item, target, args.aspect, index)
+        clip_subtitle = None
+        if transcript_cues and getattr(args, "subtitle_mode", "sidecar") != "none":
+            clip_subtitle = outdir / (target.stem + ".srt")
+            write_clip_srt(clip_subtitle, transcript_cues, item.start, item.end)
+            if getattr(args, "subtitle_mode", "sidecar") == "burn":
+                export_subtitle_path = clip_subtitle
+            else:
+                export_subtitle_path = None
+        else:
+            export_subtitle_path = None
+        export_clip(source, item, target, args.aspect, index, export_subtitle_path)
         qa = validate_export(target, item.duration, any(
             stream.get("codec_type") == "audio" for stream in metadata["streams"]))
         entry = asdict(item)
@@ -334,9 +357,10 @@ def analyze(args: argparse.Namespace) -> int:
                      if transcript_cues else "FFmpeg silence/activity detection; no transcription or semantic AI"),
         "score_warning": ("Technical scores estimate audio activity and compactness; transcript scores are lexical heuristics. "
                           "Neither predicts audience interest or virality."),
-        "transcript": {"provided": bool(transcript_cues),
+        "transcript": {"provided": bool(transcript_cues), "generated_locally": generated_transcript,
                        "path": str(transcript_path) if transcript_cues else None,
-                       "cue_count": len(transcript_cues)},
+                       "cue_count": len(transcript_cues),
+                       "subtitle_mode": getattr(args, "subtitle_mode", "sidecar")},
         "review_required": True,
         "settings": {"noise_db": args.noise_db, "silence_duration": args.silence_duration,
                      "min_duration": args.min_duration, "max_duration": args.max_duration,
@@ -354,6 +378,8 @@ def analyze(args: argparse.Namespace) -> int:
                              for k in writer.fieldnames})
     print("\nDone. {} clips saved to {}".format(len(selected), outdir.resolve()))
     print("Review report.json before publishing. Scores are not predictions of views.")
+    if temp_transcript_dir is not None:
+        temp_transcript_dir.cleanup()
     return 0
 
 
@@ -370,7 +396,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--silence-duration", type=float, default=0.45, help="minimum silence interval in seconds")
     p.add_argument("--aspect", choices=("source", "vertical"), default="source",
                    help="preserve source frame or center-crop to 9:16")
-    p.add_argument("--transcript", help="optional timed .srt/.vtt sidecar for story-aware lexical ranking")
+    p.add_argument("--transcript", help="optional timed .srt/.vtt sidecar; takes priority over auto transcription")
+    p.add_argument("--whisper-model", help="local whisper.cpp GGML/GGUF model; enables offline auto-transcription when no sidecar is supplied")
+    p.add_argument("--whisper-cli", default="whisper-cli", help="whisper.cpp executable (default: whisper-cli)")
+    p.add_argument("--subtitle-mode", choices=("none", "sidecar", "burn"), default="sidecar", help="write editable per-clip SRT files, burn captions into video, or disable subtitle output (default: sidecar)")
     p.add_argument("--output", help="empty output folder (default: unique timestamped folder under output/<video-name>)")
     return parser
 
