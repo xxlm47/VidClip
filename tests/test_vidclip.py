@@ -55,6 +55,15 @@ class VidClipBaselineTests(unittest.TestCase):
     def test_silence_only_input_has_no_active_regions(self):
         self.assertEqual(vidclip.active_regions([(0.0, 20.0)], 20.0), [])
 
+    def test_silent_video_candidates_are_unscored_not_discarded(self):
+        candidates = vidclip.make_candidates(
+            [(0.0, 90.0)], 90.0, 15.0, 60.0, allow_silent=True)
+        self.assertTrue(candidates)
+        self.assertTrue(all(candidate.score == 0.0 for candidate in candidates))
+        self.assertTrue(all(candidate.active_ratio == 0.0 for candidate in candidates))
+        self.assertTrue(all(any("no audio stream" in reason for reason in candidate.reasons)
+                            for candidate in candidates))
+
 
 if __name__ == "__main__":
     unittest.main()
