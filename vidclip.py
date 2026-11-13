@@ -311,7 +311,9 @@ def analyze(args: argparse.Namespace) -> int:
     generated_transcript = False
     embedded_transcript = False
     temp_transcript_dir = None
-    if not transcript_path:
+    if getattr(args, "subtitle_mode", "none") == "none":
+        transcript_path = None
+    elif not transcript_path:
         if extract_embedded_subtitles is None:
             raise RuntimeError("Subtitle helper unavailable; restore vidclip_subtitles.py.")
         temp_transcript_dir = tempfile.TemporaryDirectory(prefix="vidclip-subtitles-")
@@ -334,9 +336,11 @@ def analyze(args: argparse.Namespace) -> int:
         transcript_cues = parse_subtitles(transcript_path)
         attach_transcript_scores(candidates, transcript_cues)
         print("Transcript: {} timed cues loaded; ranking includes lexical evidence.".format(len(transcript_cues)))
+    if duration + 0.01 < args.clips * args.min_duration:
+        raise RuntimeError("Source is too short for {} non-overlapping clips of at least {:.0f}s (needs at least {:.0f}s; source is {:.1f}s).".format(args.clips, args.min_duration, args.clips * args.min_duration, duration))
     selected = choose_non_overlapping(candidates, args.clips, duration)
-    if not selected:
-        raise RuntimeError("No suitable candidates found. Try lowering --min-duration or adjusting --noise-db.")
+    if len(selected) != args.clips:
+        raise RuntimeError("Could only find {} of {} requested clips meeting the minimum duration. Try a longer source or adjust --noise-db; VidClip will not export short filler clips.".format(len(selected), args.clips))
     if args.output:
         outdir = Path(args.output).expanduser()
         if outdir.exists() and any(outdir.iterdir()):
@@ -413,8 +417,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("analyze", help="analyze a video and export ranked clips")
     p.add_argument("input", help="path to a local video file")
-    p.add_argument("--clips", type=int, default=5, help="number of non-overlapping clips (default: 5)")
-    p.add_argument("--min-duration", type=float, default=15.0, help="minimum clip length in seconds")
+    p.add_argument("--clips", type=int, default=4, help="number of non-overlapping clips (default: 4)")
+    p.add_argument("--min-duration", type=float, default=90.0, help="minimum clip length in seconds (default: 90)")
     p.add_argument("--max-duration", type=float, default=120.0, help="maximum clip length; hard limit 120 seconds")
     p.add_argument("--noise-db", type=float, default=-32.0, help="silence threshold in dB (default: -32)")
     p.add_argument("--silence-duration", type=float, default=0.45, help="minimum silence interval in seconds")
@@ -423,7 +427,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcript", help="optional timed .srt/.vtt sidecar; takes priority over auto transcription")
     p.add_argument("--whisper-model", help="local whisper.cpp GGML/GGUF model; enables offline auto-transcription when no sidecar is supplied")
     p.add_argument("--whisper-cli", default="whisper-cli", help="whisper.cpp executable (default: whisper-cli)")
-    p.add_argument("--subtitle-mode", choices=("none", "sidecar", "burn"), default="burn", help="burn captions into each video (default), write editable SRT sidecars, or disable subtitles")
+    p.add_argument("--subtitle-mode", choices=("none", "sidecar", "burn"), default="none", help="disable subtitles (default), write editable SRT sidecars, or burn captions into each video")
     p.add_argument("--output", help="empty output folder (default: unique timestamped folder under output/<video-name>)")
     return parser
 
