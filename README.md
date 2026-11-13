@@ -11,7 +11,7 @@ VidClip turns a long video you have permission to use into a shortlist of shorte
 - Android + Termux, including low-memory devices.
 - Offline fallback with no AI quota or billing dependency.
 - Transparent scoring: explain why a segment ranked highly and what the detector cannot know.
-- Clips up to **120 seconds**; shorter clips are preferred when they contain a complete moment.
+- Defaults to **4 clips**, each **90–120 seconds**, with subtitles disabled. VidClip refuses to pad the quota with clips shorter than the requested minimum.
 - Local files stay local. No upload, telemetry, or account required by the core.
 - Optional transcription and semantic ranking can be added as separate providers later.
 
@@ -20,7 +20,7 @@ VidClip turns a long video you have permission to use into a shortlist of shorte
 - Probe video metadata with FFprobe.
 - Detect active-audio regions and silence boundaries with FFmpeg when audio exists.
 - Accept silent video sources using explicitly unscored video-only candidate windows.
-- Generate candidate windows up to 120 seconds.
+- Generate candidate windows from the configured minimum (90 seconds by default) up to 120 seconds.
 - Rank candidates using speech/activity density and duration.
 - Select configurable non-overlapping clips.
 - Export MP4 (H.264 + AAC) in source aspect ratio or center-cropped 9:16.
@@ -49,11 +49,19 @@ Analyze a downloaded video (replace the example path):
 python vidclip.py analyze ~/storage/shared/Download/your-video.mp4
 ```
 
-Choose up to five clips with a 120-second ceiling:
+Default run: export exactly four clips, each 90–120 seconds, without subtitles:
 
 ```bash
-python vidclip.py analyze ~/storage/shared/Download/your-video.mp4 --clips 5 --max-duration 120
+python vidclip.py analyze ~/storage/shared/Download/your-video.mp4
 ```
+
+Override the defaults when needed:
+
+```bash
+python vidclip.py analyze ~/storage/shared/Download/your-video.mp4 --clips 4 --min-duration 90 --max-duration 120 --subtitle-mode none
+```
+
+The source must contain at least 6 minutes of footage for four non-overlapping 90-second clips. If VidClip cannot find four qualifying moments, it stops with an explanation instead of exporting short filler clips.
 
 Create vertical clips:
 
