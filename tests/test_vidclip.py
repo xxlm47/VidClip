@@ -4,6 +4,18 @@ import vidclip
 
 
 class VidClipBaselineTests(unittest.TestCase):
+    def test_long_form_defaults_are_four_90_to_120_second_clips_without_subtitles(self):
+        args = vidclip.build_parser().parse_args(["analyze", "input.mp4"])
+        self.assertEqual(args.clips, 4)
+        self.assertEqual(args.min_duration, 90.0)
+        self.assertEqual(args.max_duration, 120.0)
+        self.assertEqual(args.subtitle_mode, "none")
+
+    def test_long_form_candidates_respect_90_second_minimum(self):
+        candidates = vidclip.make_candidates([(0.0, 600.0)], 600.0, 90.0, 120.0)
+        self.assertTrue(candidates)
+        self.assertTrue(all(90.0 <= item.duration <= 120.0 for item in candidates))
+
     def test_active_regions_are_complement_of_silence(self):
         regions = vidclip.active_regions([(2.0, 3.0), (5.0, 6.0)], 8.0)
         self.assertEqual(regions, [(0.0, 2.0), (3.0, 5.0), (6.0, 8.0)])
