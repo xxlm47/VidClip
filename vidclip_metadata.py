@@ -59,7 +59,7 @@ def _title_from_transcript(text, fallback):
     sentences = re.split(r"(?<=[.!?])\s+", text)
     usable = [s.strip(" -\t") for s in sentences if len(s.strip()) >= 18]
     candidate = max(usable, key=lambda s: min(len(s), 100)) if usable else text
-    candidate = re.sub(r"\s+", " ", candidate).strip(' "'')
+    candidate = re.sub(r"\s+", " ", candidate).strip(" \"'")
     if len(candidate) > 88:
         candidate = candidate[:85].rsplit(" ", 1)[0].rstrip(" ,;:-") + "..."
     if candidate and candidate[-1] not in ".!?":
