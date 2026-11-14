@@ -75,7 +75,7 @@ Choose a shorter ceiling:
 python vidclip.py analyze ~/storage/shared/Download/your-video.mp4 --max-duration 60 --clips 5
 ```
 
-Outputs are written under a unique timestamped folder inside `output/<video-name>/` by default, so a new run does not overwrite earlier clips. Use `--output /path/to/empty-folder` to choose another location; VidClip refuses to overwrite a non-empty custom output folder.
+Outputs are written under a unique timestamped folder inside `output/<video-name>/` by default, so a new run does not overwrite earlier clips. VidClip also copies completed exports to Android shared storage at `Movies/VidClip/<video-name>/<run-id>/` when `termux-setup-storage` permission is available. Open the Android Files app and browse to **Internal storage → Movies → VidClip**. Use `--output /path/to/empty-folder` to choose another location; VidClip refuses to overwrite a non-empty custom output folder.
 
 Run the lightweight unit tests (no video fixture or AI model required):
 
