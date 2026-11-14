@@ -28,6 +28,11 @@ except ImportError:
     parse_subtitles = None
     transcribe_with_whisper = write_clip_srt = burn_subtitles_filter = extract_embedded_subtitles = None
 
+try:
+    from vidclip_metadata import build_clip_metadata, write_metadata_files
+except ImportError:
+    build_clip_metadata = write_metadata_files = None
+
 
 @dataclass
 class Candidate:
@@ -311,7 +316,9 @@ def analyze(args: argparse.Namespace) -> int:
     generated_transcript = False
     embedded_transcript = False
     temp_transcript_dir = None
-    if getattr(args, "subtitle_mode", "none") == "none":
+    # A transcript can power metadata even when subtitle files are disabled.
+    # Subtitle export remains disabled unless --subtitle-mode requests it.
+    if getattr(args, "subtitle_mode", "none") == "none" and not transcript_path:
         transcript_path = None
     elif not transcript_path:
         if extract_embedded_subtitles is None:
@@ -350,6 +357,7 @@ def analyze(args: argparse.Namespace) -> int:
         outdir = Path("output") / source.stem / run_id
     outdir.mkdir(parents=True, exist_ok=True)
     report_items = []
+    metadata_items = []
     for index, item in enumerate(selected, 1):
         filename = make_clip_filename(index, item.start)
         target = outdir / filename
@@ -372,6 +380,11 @@ def analyze(args: argparse.Namespace) -> int:
         entry["export_qa"] = qa
         entry.update({"clip": filename, "duration": round(item.duration, 2),
                       "score_type": "baseline_technical_not_viral"})
+        if build_clip_metadata is not None:
+            clip_meta = build_clip_metadata(transcript_cues, item.start, item.end, source.stem, index)
+            clip_meta["clip"] = filename
+            metadata_items.append(clip_meta)
+            entry["social_metadata"] = clip_meta
         report_items.append(entry)
     report = {
         "app": "VidClip",
@@ -396,6 +409,8 @@ def analyze(args: argparse.Namespace) -> int:
         "clips": report_items
     }
     (outdir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if write_metadata_files is not None:
+        write_metadata_files(outdir, metadata_items)
     with (outdir / "report.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=[
             "clip", "start", "end", "duration", "active_seconds",
