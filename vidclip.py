@@ -405,6 +405,21 @@ def analyze(args: argparse.Namespace) -> int:
             writer.writerow({k: json.dumps(row.get(k)) if k in ("reasons", "story_analysis", "export_qa") else row.get(k)
                              for k in writer.fieldnames})
     print("\nDone. {} clips saved to {}".format(len(selected), outdir.resolve()))
+    # Mirror finished exports into Android shared storage when permission exists.
+    android_shared = Path.home() / "storage" / "shared"
+    android_root = android_shared / "Movies" / "VidClip"
+    try:
+        if android_shared.exists():
+            android_out = android_root / source.stem / outdir.name
+            android_out.mkdir(parents=True, exist_ok=True)
+            for exported in outdir.iterdir():
+                if exported.is_file():
+                    shutil.copy2(str(exported), str(android_out / exported.name))
+            print("Android copy: {}".format(android_out))
+        else:
+            print("Android copy skipped: run termux-setup-storage and allow storage access, then rerun VidClip.")
+    except OSError as exc:
+        print("Android copy failed: {}. Original exports remain at {}.".format(exc, outdir.resolve()))
     print("Review report.json before publishing. Scores are not predictions of views.")
     if temp_transcript_dir is not None:
         temp_transcript_dir.cleanup()
