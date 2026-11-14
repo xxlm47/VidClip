@@ -1,4 +1,7 @@
+import json
+import subprocess
 import unittest
+from unittest.mock import patch
 
 import vidclip
 
@@ -15,6 +18,17 @@ class VidClipBaselineTests(unittest.TestCase):
         candidates = vidclip.make_candidates([(0.0, 600.0)], 600.0, 90.0, 120.0)
         self.assertTrue(candidates)
         self.assertTrue(all(90.0 <= item.duration <= 120.0 for item in candidates))
+
+    def test_export_validation_rejects_45_second_clip_when_90_required(self):
+        fake = subprocess.CompletedProcess(
+            args=["ffprobe"], returncode=0, stdout=json.dumps({
+                "format": {"duration": "45.0"},
+                "streams": [{"codec_type": "video", "width": 1080, "height": 1920}]
+            }), stderr=""
+        )
+        with patch.object(vidclip, "run", return_value=fake):
+            with self.assertRaisesRegex(RuntimeError, "shorter than the required 90.0s minimum"):
+                vidclip.validate_export("clip.mp4", 120.0, False, minimum_duration=90.0)
 
     def test_active_regions_are_complement_of_silence(self):
         regions = vidclip.active_regions([(2.0, 3.0), (5.0, 6.0)], 8.0)
