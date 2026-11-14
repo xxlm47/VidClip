@@ -25,6 +25,7 @@ VidClip turns a long video you have permission to use into a shortlist of shorte
 - Select configurable non-overlapping clips.
 - Export MP4 (H.264 + AAC) in source aspect ratio or center-cropped 9:16.
 - Save JSON and CSV reports with timestamps, scores, and detector limitations.
+- Generate a TikTok title, up to five relevant hashtags, and a copy-ready caption for every clip; save `titles_and_hashtags.txt` and `clip_metadata.json`.
 - Keep the original video unchanged.
 
 ## Requirements
@@ -82,6 +83,24 @@ Run the lightweight unit tests (no video fixture or AI model required):
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## TikTok titles, hashtags, and captions
+
+Every run creates `titles_and_hashtags.txt` and `clip_metadata.json` alongside the MP4s. Each clip gets its own title, up to five hashtags, and a copy-ready caption. These files are also copied into Android shared storage with the videos.
+
+For accurate clip-specific wording, provide a timed transcript while keeping subtitles disabled:
+
+```bash
+python vidclip.py analyze ~/storage/shared/Download/your-video.mp4 --transcript ~/storage/shared/Download/your-video.srt
+```
+
+Or, if whisper.cpp is already installed with a local model, let VidClip transcribe locally:
+
+```bash
+python vidclip.py analyze ~/storage/shared/Download/your-video.mp4 --whisper-model /path/to/ggml-model.bin
+```
+
+Neither option burns subtitles into the MP4 when the default `--subtitle-mode none` is used. Without a transcript, VidClip creates clearly marked filename-based draft titles and tags; it does not pretend to understand the clip's spoken content. Always review names, context, and hashtags before posting. This metadata generator is offline and does not require an API key.
 
 ## How the baseline works
 
