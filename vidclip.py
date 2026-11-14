@@ -252,7 +252,8 @@ def export_clip(source: Path, candidate: Candidate, target: Path,
         raise RuntimeError("Export failed for clip {}: {}".format(index, result.stderr[-1200:]))
 
 
-def validate_export(path: Path, expected_duration: float, has_audio: bool) -> dict:
+def validate_export(path: Path, expected_duration: float, has_audio: bool,
+                    minimum_duration: float = 8.0) -> dict:
     """Verify the exported file can be probed and contains expected streams."""
     result = run([
         "ffprobe", "-v", "error", "-show_entries",
@@ -271,6 +272,9 @@ def validate_export(path: Path, expected_duration: float, has_audio: bool) -> di
     exported_audio = any(item.get("codec_type") == "audio" for item in streams)
     if not has_video or (has_audio and not exported_audio):
         raise RuntimeError("Export QA found a missing required stream in " + path.name)
+    if actual_duration < minimum_duration - 1.5:
+        raise RuntimeError("Export QA rejected {}: {:.1f}s is shorter than the required {:.1f}s minimum.".format(
+            path.name, actual_duration, minimum_duration))
     if actual_duration <= 0 or actual_duration > expected_duration + 1.5:
         raise RuntimeError("Export QA found an invalid duration in " + path.name)
     video = next(item for item in streams if item.get("codec_type") == "video")
@@ -299,6 +303,8 @@ def analyze(args: argparse.Namespace) -> int:
     if not math.isfinite(args.silence_duration) or args.silence_duration <= 0:
         raise RuntimeError("--silence-duration must be greater than zero.")
     print("VidClip | {}".format(source.name))
+    print("Clip target: {} clips | {:.0f}–{:.0f} seconds each | subtitles: {}".format(
+        args.clips, args.min_duration, args.max_duration, args.subtitle_mode))
     has_audio = metadata["has_audio"]
     if has_audio:
         print("Duration: {:.1f}s | analyzing audio activity...".format(duration))
@@ -348,6 +354,10 @@ def analyze(args: argparse.Namespace) -> int:
     selected = choose_non_overlapping(candidates, args.clips, duration)
     if len(selected) != args.clips:
         raise RuntimeError("Could only find {} of {} requested clips meeting the minimum duration. Try a longer source or adjust --noise-db; VidClip will not export short filler clips.".format(len(selected), args.clips))
+    too_short = [item for item in selected if item.duration + 0.01 < args.min_duration]
+    if too_short:
+        raise RuntimeError("Internal selection safety check stopped export: a selected clip was shorter than {:.1f}s.".format(
+            args.min_duration))
     if args.output:
         outdir = Path(args.output).expanduser()
         if outdir.exists() and any(outdir.iterdir()):
@@ -375,7 +385,8 @@ def analyze(args: argparse.Namespace) -> int:
             export_subtitle_path = None
         export_clip(source, item, target, args.aspect, index, export_subtitle_path)
         qa = validate_export(target, item.duration, any(
-            stream.get("codec_type") == "audio" for stream in metadata["streams"]))
+            stream.get("codec_type") == "audio" for stream in metadata["streams"]),
+            minimum_duration=args.min_duration)
         entry = asdict(item)
         entry["export_qa"] = qa
         entry.update({"clip": filename, "duration": round(item.duration, 2),
