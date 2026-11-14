@@ -31,7 +31,7 @@ TAG_MAP = {
     "drug": "#DrugAwareness", "children": "#ChildSafety", "child": "#ChildSafety",
     "kids": "#ChildSafety", "medic": "#FirstResponders", "ambulance": "#FirstResponders",
     "hospital": "#FirstResponders", "fire": "#FirstResponders",
-    "rescue": "#Rescue", "accident": "#事故", "crash": "#Crash",
+    "rescue": "#Rescue", "accident": "#CarAccident", "crash": "#Crash",
     "car": "#Cars", "vehicle": "#Cars", "school": "#Education",
     "money": "#Money", "business": "#Business", "sports": "#Sports",
     "football": "#Football", "basketball": "#Basketball",
